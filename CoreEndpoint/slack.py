@@ -8,6 +8,7 @@ from flask_sslify import SSLify
 from raven.contrib.flask import Sentry
 from gpucelery import ToGPU_paint
 from gpucelery import ToGPU_guesspicture
+from gpucelery import ToGPU_daydream
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app)
@@ -40,12 +41,13 @@ helptext = "My in-silico neurons and I are image fanatics.  Feel free to attach 
            "  Comment: 'paint afremov'  - will paint using my Leonid Afremov impersonation\n" \
            "  Comment: 'paint van gogh' - will paint using my Vincent van Gogh impersonation\n" \
            "  Comment: 'guess me'       - will guess what your image is\n" \
+           "  Comment: 'daydream'       - will use your image in a dream\n" \
            "Note 1: i only support painting jpg and png files\n" \
            "Note 2: type the comments precisely as above since I'm not using Word2Vec yet\n" \
            "Note 3: the comments must be added as part of the image upload\n" \
            "Note 4: it's ok if you don't like my art, i will keep practicing!";
 
-optionslist = ['guess me', 'paint monet', 'paint picasso', 'paint afremov', 'paint van gogh'];
+optionslist = ['daydream', 'guess me', 'paint monet', 'paint picasso', 'paint afremov', 'paint van gogh'];
 
 
 def deep_search(needles, haystack):
@@ -144,6 +146,13 @@ def result():
                                         if (not 'error' in response.json()):
                                             print ("Lets add this bad boy to the queue\n");
                                             ToGPU_guesspicture.delay (mysecrettoken, event['channel'], event['user'], file['url_private'], file['filetype'].lower());
+                                    elif (optionpicked == "daydream"):
+                                        message = "I'm going to sleep and daydream about your picture <@%s|cal>, firing up my subconscious neurons - Zzzzzzz." % (event['user']);
+                                        payload = {'token': mysecrettoken, 'channel': event['channel'], 'text': message};
+                                        response = requests.post(url='https://slack.com/api/chat.postMessage', data=payload);
+                                        if (not 'error' in response.json()):
+                                            print ("Lets add this bad boy to the queue\n");
+                                            ToGPU_daydream.delay (mysecrettoken, event['channel'], event['user'], 'notusedyet', file['url_private'], file['filetype'].lower());
                                     else:
                                         message = "Will do captain <@%s|cal>, firing up my painting neurons - stay tuned." % (event['user']);
                                         payload = {'token': mysecrettoken, 'channel': event['channel'], 'text': message};
@@ -172,6 +181,20 @@ def result():
                              print ("Lets add this bad boy to the queue\n");
                              print (lastcache);
                              ToGPU_guesspicture.delay (mysecrettoken, event['channel'], event['user'], lastcache['imageurl'], lastcache['imagetype']);
+                    elif (textmessage == 'daydream last'):
+                       if not (event['channel'] in imagecache):
+                          message = "Sorry <@%s|cal>, I don't remember the last image on this channel (I may have been restarted)." % (event['user']);
+                          payload = {'token': mysecrettoken, 'channel': event['channel'], 'text': message};
+                          response = requests.post(url='https://slack.com/api/chat.postMessage', data=payload);
+                       else: 
+                          lastcache = imagecache[event['channel']];
+                          message = "Going to daydream about the last picture or thumbnail in this channel <@%s|cal>, Zzzzzzz... sleeping for a few" % (event['user']);
+                          payload = {'token': mysecrettoken, 'channel': event['channel'], 'text': message};
+                          response = requests.post(url='https://slack.com/api/chat.postMessage', data=payload);
+                          if (not 'error' in response.json()):
+                             print ("Lets add this bad boy to the queue\n");
+                             print (lastcache);
+                             ToGPU_daydream.delay (mysecrettoken, event['channel'], event['user'], 'notusedyet', lastcache['imageurl'], lastcache['imagetype']);
 
         return "I'm a good painter I think";
 

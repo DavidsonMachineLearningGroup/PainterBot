@@ -40,6 +40,34 @@ def ToGPU_paint (token, channelid, userid, commandtext, downloadurl, filetype):
     return commandtext;
 
 @celeryapp.task
+def ToGPU_daydream (token, channelid, userid, commandtext, downloadurl, filetype):
+    # config
+    paintingdir="/home/kbhit/git/deepdream/paintings_forslackbot/"
+    finalpainting="/home/kbhit/git/deepdream/paintings_forslackbot/montage_finaloutput.jpg"
+    thescript = "/home/kbhit/git/PainterBot/Features/DeepDream/DeepDream_forSlack.sh"
+
+    # start with a fresh input/output directory
+    if (os.path.isdir (paintingdir)):
+        shutil.rmtree (paintingdir) # remove directory
+        print ("removing directory, it already exists");
+    os.makedirs (paintingdir) # make the same directory
+
+    # download original slack image
+    inputimage = "%s/slackinput.%s" % (paintingdir, filetype);
+    response = requests.get(downloadurl, headers={'Authorization': "Bearer %s" % (token)}, stream=True)
+    with open (inputimage, 'wb') as out_file:
+        shutil.copyfileobj (response.raw, out_file)
+
+    # lets paint
+    subp.call (["/bin/bash", thescript, inputimage])
+
+    # give results
+    message = "I just finished daydreaming <@%s|cal>, was I having a nightmare?  I used google's deepdream algorithm for this.  All neuron computations occurred on our teams GPU server - please consider donating!" % (userid);
+    f = {'file': (finalpainting, open(finalpainting, 'rb'), 'image/png', {'Expires':'0'})}
+    response = requests.post (url='https://slack.com/api/files.upload', data = {'token': token, 'channels': channelid, 'initial_comment': message, 'media': f}, headers={'Accept': 'application/json'}, files=f)
+    return commandtext;
+
+@celeryapp.task
 def ToGPU_guesspicture (token, channelid, userid, downloadurl, filetype):
     # config
     scriptrundir="/home/kbhit/git/dml-chatbot/vgg16-guesspicture/outfiles/"
