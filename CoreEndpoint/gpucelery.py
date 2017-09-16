@@ -4,8 +4,88 @@ import shutil
 import os
 import subprocess as subp
 
+import tweepy;
+from tweepy import OAuthHandler
+from tweepy import Stream
+import json
+import random
+
 celeryapp = Celery ('gpucelery', broker='amqp://guest@localhost')
 
+def deep_search(needles, haystack):
+    found = {}
+    if type(needles) != type([]):
+        needles = [needles]
+
+    if type(haystack) == type(dict()):
+        for needle in needles:
+            if needle in haystack.keys():
+                found[needle] = haystack[needle]
+            elif len(haystack.keys()) > 0:
+                for key in haystack.keys():
+                    result = deep_search(needle, haystack[key])
+                    if result:
+                        for k, v in result.items():
+                            found[k] = v
+    elif type(haystack) == type([]):
+        for node in haystack:
+            result = deep_search(needles, node)
+            if result:
+                for k, v in result.items():
+                    found[k] = v
+    return found
+
+# only support for jpg and png for now
+def validPictureFormat (filename):
+    filename = filename.lower ()
+    if filename[-4:] == ".jpg" or filename[-5:] == ".jpeg" or filename[-4:] == ".png":
+        return True
+    return False
+
+def getFileType (filename):
+    filename = filename.lower ()
+    if filename[-4:] == ".jpg" or filename[-5:] == ".jpeg":
+        return 'jpg'
+    elif filename[-4:] == ".png":
+        return 'png'
+    else:
+        return 'invalidformat'
+
+
+@celeryapp.task
+def Twitter_ToGPU_paint (tweepyapi, payload):
+        paintingdir="/home/kbhit/git/neural-style/me-myself-ai/paintings/forslackbot/"
+        neuralstylistscript = "/home/kbhit/git/neural-style/NeuroStylist_forSlack.sh"
+        finalpainting="/home/kbhit/git/neural-style/me-myself-ai/paintings/forslackbot/montage_finaloutput.jpg"
+
+        json_data= json.loads(payload)
+        print(payload)
+
+        findme = deep_search(["media_url"], json_data)
+        if 'media_url' in findme:
+           painturl = findme['media_url']
+           if (validPictureFormat (painturl) == True):
+              print ("going to paint URL %s: " % (findme['media_url']))
+              filetype = getFileType (painturl);
+
+              # start with a fresh input/output directory
+              if (os.path.isdir (paintingdir)):
+                  shutil.rmtree (paintingdir) # remove directory
+                  print ("removing directory, it already exists");
+              os.makedirs (paintingdir) # make the same directory
+              
+              # download original slack image
+              inputimage = "%s/slackinput.%s" % (paintingdir, filetype);
+              response = requests.get(painturl, stream=True)
+              with open (inputimage, 'wb') as out_file:
+                  shutil.copyfileobj (response.raw, out_file)
+              # lets paint
+              subp.call (["/bin/bash", neuralstylistscript, inputimage, '/home/kbhit/git/neural-style/me-myself-ai/styles/Picasso.jpg'])
+   
+              tweeter_name = json_data['user']['screen_name']
+              status = "(@%s thanks for the mention and random number %f" % (tweeter_name, random.random())
+              tweepyapi.update_with_media(finalpainting, status=status)
+   
 
 @celeryapp.task
 def ToGPU_paint (token, channelid, userid, commandtext, downloadurl, filetype):
